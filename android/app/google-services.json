@@ -1,0 +1,30 @@
+{
+  "project_info": {
+    "project_number": "796885332741",
+    "firebase_url": "https://yuvaapp-default-rtdb.asia-southeast1.firebasedatabase.app",
+    "project_id": "yuvaapp",
+    "storage_bucket": "yuvaapp.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:796885332741:android:dda9003aa7bd4e6387fd6c",
+        "android_client_info": {
+          "package_name": "com.example.yuva"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD9vipneHfsLEXeBWTVPEawK77N2-vFW2s"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
