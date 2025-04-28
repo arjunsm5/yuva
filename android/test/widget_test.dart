@@ -1,30 +1,30 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
-
+import 'package:android/main.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:android/main.dart';
-
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
+  testWidgets('Yuva app loads and adds opportunity', (
+      WidgetTester tester,
+      ) async {
     // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
+    await tester.pumpWidget(const MyApp());  // Use MyApp instead of YuvaApp
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
+    // Verify that the app loads with the splash screen.
+    expect(find.text('Yuva Opportunities'), findsNothing);  // SplashScreen might not show this text yet
+    expect(find.text('New Opportunity'), findsNothing);
+
+    // Wait for the splash screen to complete (if necessary).
+    await tester.pumpAndSettle(); // If you have a delay, ensure it settles
+
+    // Verify that the opportunity screen is shown after the splash screen.
+    expect(find.text('Yuva Opportunities'), findsOneWidget);
+    expect(find.text('New Opportunity'), findsNothing);
 
     // Tap the '+' icon and trigger a frame.
     await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
+    await tester.pumpAndSettle();  // Wait for async operations (e.g., Firebase set)
 
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+    // Verify that a new opportunity is added.
+    expect(find.text('New Opportunity'), findsOneWidget);
   });
 }

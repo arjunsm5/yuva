@@ -2,18 +2,18 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
-import 'package:yuva/screens/settings_screen.dart';
-import 'package:yuva/screens/buy_sell_screen.dart';
-import 'package:yuva/screens/challenge_screen.dart';
-import 'package:yuva/screens/clips_screen.dart';
-import 'package:yuva/screens/messages_screen.dart';
-import 'package:yuva/screens/networking_screen.dart'; // Renamed ConnectScreen
+import 'package:yuva/screens/account/settings_screen.dart';
+import 'package:yuva/screens/shop/buy_sell_screen.dart';
+import 'package:yuva/screens/challenge/challenge_screen.dart';
+import 'package:yuva/screens/challenge/clips_screen.dart';
+import 'package:yuva/screens/message/messages_screen.dart';
+import 'package:yuva/screens/network/networking_screen.dart'; // Renamed ConnectScreen
 
 // Drawer screen imports
-import 'package:yuva/screens/profile_screen.dart';
-import 'package:yuva/screens/hubs_screen.dart';
-import 'package:yuva/screens/wallet_screen.dart';
-import 'package:yuva/screens/bookmarks_screen.dart';
+import 'package:yuva/screens/account/profile_screen.dart';
+import 'package:yuva/screens/network/hubs_screen.dart';
+import 'package:yuva/screens/challenge/wallet_screen.dart';
+import 'package:yuva/screens/network/bookmarks_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   final String userName;

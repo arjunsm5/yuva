@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart'; // For Firestore
-import 'package:yuva/screens/home_screen.dart';
-import 'package:yuva/screens/register_screen.dart'; // Import RegisterScreen
+import 'package:yuva/screens/ui/home_screen.dart';
+import 'package:yuva/screens/account/register_screen.dart'; // Import RegisterScreen
 import 'dart:async';
 import 'package:pin_code_fields/pin_code_fields.dart';
 

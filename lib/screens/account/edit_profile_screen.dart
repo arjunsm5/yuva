@@ -9,7 +9,7 @@ import 'package:image/image.dart' as img;
 import 'package:yuva/screens/skills_screen.dart';
 import 'package:yuva/screens/work_experience_screen.dart';
 
-import 'education_screen.dart';
+import '../education_screen.dart';
 
 class EditProfileScreen extends StatefulWidget {
   final Map<String, dynamic> userData;

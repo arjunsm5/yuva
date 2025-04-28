@@ -2,9 +2,9 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart'; // For authentication
 import 'package:cloud_firestore/cloud_firestore.dart'; // For Firestore
-import 'package:yuva/screens/admin_panel_screen.dart'; // Import AdminPanelScreen
-import 'package:yuva/screens/app_theme_screen.dart'; // Import AppThemeScreen
-import 'package:yuva/screens/login_screen.dart'; // Import LoginScreen for navigation
+import 'package:yuva/screens/admin/admin_panel_screen.dart'; // Import AdminPanelScreen
+import 'package:yuva/screens/ui/app_theme_screen.dart'; // Import AppThemeScreen
+import 'package:yuva/screens/account/login_screen.dart'; // Import LoginScreen for navigation
 import 'package:yuva/utils/app_theme.dart'; // Import AppTheme for colors
 
 // 📄 SettingsScreen with modern UI and specified options
