@@ -1,23 +1,21 @@
 import 'dart:io'; // Import for file handling (e.g., college ID image)
-import 'dart:async'; // Import for timeout handling
 import 'package:flutter/material.dart'; // Core Flutter UI library
 import 'package:cloud_firestore/cloud_firestore.dart'; // Firestore for user data storage
-import 'package:firebase_auth/firebase_auth.dart'; // Firebase Authentication for OTP
+import 'package:firebase_auth/firebase_auth.dart'; // Firebase Authentication
 import 'package:firebase_storage/firebase_storage.dart'; // Firebase Storage for image upload
 import 'package:image_picker/image_picker.dart'; // Library for picking images
 import 'package:intl/intl.dart'; // Date formatting
-import 'package:permission_handler/permission_handler.dart'; // Permission handling
-import 'package:device_info_plus/device_info_plus.dart'; // Device info for platform checks
-import 'package:geolocator/geolocator.dart'; // Geolocation services
-import 'package:geocoding/geocoding.dart'; // Geocoding for location names
-import 'package:yuva/screens/home_screen.dart'; // Navigation to HomeScreen (adjust 'yuva' to your app name)
 import 'package:flutter_image_compress/flutter_image_compress.dart'; // Import for image compression
+import 'package:permission_handler/permission_handler.dart';
+import 'package:yuva/screens/home_screen.dart'; // Navigation to HomeScreen (adjust 'yuva' to your app name)
 import 'package:yuva/utils/app_theme.dart'; // Import AppTheme for colors
 import 'package:provider/provider.dart'; // Import Provider for theme access
 import 'package:yuva/utils/theme_provider.dart'; // Import ThemeProvider for theme state
 
 class RegisterScreen extends StatefulWidget {
-  const RegisterScreen({super.key});
+  final String phoneNumber; // Parameter to receive phone number from login screen
+
+  const RegisterScreen({super.key, required this.phoneNumber});
 
   @override
   State<RegisterScreen> createState() => _RegisterScreenState();
@@ -26,7 +24,7 @@ class RegisterScreen extends StatefulWidget {
 class _RegisterScreenState extends State<RegisterScreen> {
   final PageController _pageController = PageController(); // Controls page navigation
   final GlobalKey _pageViewKey = GlobalKey(); // Key for the PageView widget
-  int _currentPage = 0; // Tracks the current step (0, 1, or 2)
+  int _currentPage = 0; // Tracks the current step (0 or 1)
   bool _isLoading = false; // Loading state for buttons
   bool _isLayoutReady = false; // Ensures layout is ready after initialization
 
@@ -34,14 +32,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _nameController = TextEditingController();
   final _dobController = TextEditingController();
   final _locationController = TextEditingController();
-  final _phoneController = TextEditingController();
   final _collegeNameController = TextEditingController();
-  final _otpController = TextEditingController();
   File? _collegeIdImage; // Stores the selected college ID image
 
   DateTime? _selectedDate; // Stores the selected date of birth
-  String? _verificationId; // Stores the verification ID from Firebase for OTP
-  int? _resendToken; // Token for resending OTP without reCAPTCHA
+  String? _selectedGender; // Stores the selected gender
 
   // Lazy access to FirebaseAuth instance
   FirebaseAuth get _auth => FirebaseAuth.instance;
@@ -64,87 +59,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
     _nameController.dispose();
     _dobController.dispose();
     _locationController.dispose();
-    _phoneController.dispose();
     _collegeNameController.dispose();
-    _otpController.dispose();
     _pageController.dispose();
     super.dispose();
-  }
-
-  // Fetch the user's current location with timeout
-  Future<void> _fetchLocation() async {
-    setState(() => _isLoading = true);
-    try {
-      if (Platform.isAndroid) {
-        final deviceInfo = DeviceInfoPlugin();
-        final androidInfo = await deviceInfo.androidInfo;
-        if (androidInfo.isPhysicalDevice != true) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Location services may not be available on emulators. Please enter manually.')),
-          );
-          setState(() => _isLoading = false);
-          return;
-        }
-      }
-
-      bool serviceEnabled = await Geolocator.isLocationServiceEnabled().timeout(const Duration(seconds: 5));
-      if (!serviceEnabled) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Location services are disabled. Please enter manually.')),
-        );
-        setState(() => _isLoading = false);
-        return;
-      }
-
-      LocationPermission permission = await Geolocator.checkPermission().timeout(const Duration(seconds: 5));
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission().timeout(const Duration(seconds: 5));
-        if (permission == LocationPermission.denied) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Location permission denied. Please enter manually.')),
-          );
-          setState(() => _isLoading = false);
-          return;
-        }
-      }
-
-      if (permission == LocationPermission.deniedForever) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('Location permission permanently denied. Please enable it in settings or enter manually.'),
-            action: SnackBarAction(label: 'Open Settings', onPressed: () => openAppSettings()),
-          ),
-        );
-        setState(() => _isLoading = false);
-        return;
-      }
-
-      Position position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.low,
-      ).timeout(const Duration(seconds: 10), onTimeout: () => throw TimeoutException('Location fetch timed out'));
-
-      List<Placemark> placemarks = await placemarkFromCoordinates(
-        position.latitude,
-        position.longitude,
-      ).timeout(const Duration(seconds: 5));
-
-      if (placemarks.isNotEmpty) {
-        Placemark placemark = placemarks.first;
-        String city = placemark.locality ?? placemark.subAdministrativeArea ?? 'Unknown';
-        setState(() => _locationController.text = city);
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Unable to fetch location. Please enter manually.')),
-        );
-      }
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error fetching location: $e. Please enter manually.')),
-      );
-      print('Location fetch error: $e');
-    } finally {
-      setState(() => _isLoading = false);
-    }
   }
 
   // Open date picker for DOB
@@ -181,10 +98,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   // Pick an image from gallery
   Future<void> _pickImage() async {
     setState(() => _isLoading = true);
-    Permission permission = Platform.isAndroid && (await DeviceInfoPlugin().androidInfo).version.sdkInt >= 33 ? Permission.photos : Permission.storage;
-    var status = await permission.status;
-    if (!status.isGranted) status = await permission.request();
-
+    final status = await Permission.storage.request();
     if (status.isGranted) {
       try {
         final pickedImage = await ImagePicker().pickImage(source: ImageSource.gallery);
@@ -219,17 +133,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
       );
 
       if (compressedImage == null) throw Exception('Image compression failed');
-      print('Original size: ${(await imageFile.length()) / 1024} KB');
-      print('Compressed size: ${(await compressedImage.length()) / 1024} KB');
       return File(compressedImage.path);
     } catch (e) {
-      print('Error compressing image: $e');
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error compressing image: $e')));
       return null;
     }
   }
 
-  // Validate Step 1 (Personal Information) with phone number check
+  // Validate Step 1 (Personal Information)
   Future<bool> _validateStep1() async {
     if (_nameController.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please enter your full name')));
@@ -243,20 +154,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please enter your location')));
       return false;
     }
-    if (_phoneController.text.trim().length != 10) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please enter a valid 10-digit phone number')));
-      return false;
-    }
-
-    final phoneNumber = "+91${_phoneController.text.trim()}";
-    try {
-      final querySnapshot = await FirebaseFirestore.instance.collection('users').where('phone', isEqualTo: phoneNumber).get();
-      if (querySnapshot.docs.isNotEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('This phone number is already registered')));
-        return false;
-      }
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error checking phone number: $e')));
+    if (_selectedGender == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please select your gender')));
       return false;
     }
     return true;
@@ -275,68 +174,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
     return true;
   }
 
-  // Validate Step 3 (OTP)
-  bool _validateStep3() {
-    if (_otpController.text.trim().isEmpty || _otpController.text.trim().length != 6) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please enter a valid 6-digit OTP')));
-      return false;
-    }
-    return true;
-  }
-
-  // Send OTP to the user's phone number with resend support
-  Future<void> _sendOTP({int? resendToken}) async {
+  // Submit registration with image upload and phone number
+  Future<void> _submitRegistration() async {
     setState(() => _isLoading = true);
     try {
-      final phoneNumber = "+91${_phoneController.text.trim()}";
-      print('Sending OTP to: $phoneNumber with resendToken: $resendToken');
-      await _auth.verifyPhoneNumber(
-        phoneNumber: phoneNumber,
-        forceResendingToken: resendToken,
-        verificationCompleted: (PhoneAuthCredential credential) async {
-          print('Verification completed automatically: ${credential.smsCode}');
-          await _auth.signInWithCredential(credential);
-          _navigateToHome();
-        },
-        verificationFailed: (FirebaseAuthException e) {
-          print('Verification failed: ${e.message}, Code: ${e.code}');
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to send OTP: ${e.message}')));
-        },
-        codeSent: (String verificationId, int? resendToken) {
-          print('OTP sent, verificationId: $verificationId, resendToken: $resendToken');
-          setState(() {
-            _verificationId = verificationId;
-            this._resendToken = resendToken;
-          });
-        },
-        codeAutoRetrievalTimeout: (String verificationId) {
-          print('Auto retrieval timeout, verificationId: $verificationId');
-          setState(() => _verificationId = verificationId);
-        },
-      );
-    } catch (e) {
-      print('Error sending OTP: $e');
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error sending OTP: $e')));
-    } finally {
-      setState(() => _isLoading = false);
-    }
-  }
-
-  // Verify OTP and complete registration with image compression
-  Future<void> _verifyOTPAndSubmit() async {
-    if (!_validateStep3()) return;
-
-    setState(() => _isLoading = true);
-    try {
-      PhoneAuthCredential credential = PhoneAuthProvider.credential(
-        verificationId: _verificationId!,
-        smsCode: _otpController.text.trim(),
-      );
-      await _auth.signInWithCredential(credential);
-      print('User authenticated: ${_auth.currentUser?.uid}');
-
-      await Future.delayed(const Duration(milliseconds: 500));
-
       String imageUrl = '';
       if (_collegeIdImage != null) {
         if (!_collegeIdImage!.existsSync()) throw Exception('College ID image file does not exist');
@@ -346,22 +187,21 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
         final storageRef = FirebaseStorage.instance.ref('college_ids/${DateTime.now().millisecondsSinceEpoch}.jpg');
         await storageRef.putFile(compressedImage);
-        await Future.delayed(const Duration(seconds: 1));
         imageUrl = await storageRef.getDownloadURL();
       }
 
       if (_auth.currentUser != null) {
-        await FirebaseFirestore.instance.collection('users').add({
+        await FirebaseFirestore.instance.collection('users').doc(_auth.currentUser!.uid).set({
           'name': _nameController.text.trim(),
           'dob': _dobController.text.trim(),
           'location': _locationController.text.trim(),
-          'phone': "+91${_phoneController.text.trim()}",
+          'gender': _selectedGender,
           'collegeName': _collegeNameController.text.trim(),
           'collegeIdUrl': imageUrl,
+          'phone': widget.phoneNumber, // Save phone number passed from login screen
           'createdAt': FieldValue.serverTimestamp(),
           'uid': _auth.currentUser!.uid,
         });
-        print('User data saved to Firestore');
       } else {
         throw Exception('No authenticated user found');
       }
@@ -369,8 +209,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Registration successful')));
       _navigateToHome();
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to verify OTP or register: $e')));
-      print('Error details: $e');
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to register: $e')));
     } finally {
       setState(() => _isLoading = false);
     }
@@ -390,7 +229,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     final indicatorWidth = screenWidth * 0.15;
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
-      children: List.generate(3, (index) {
+      children: List.generate(2, (index) {
         return AnimatedContainer(
           duration: animationDuration,
           margin: const EdgeInsets.symmetric(horizontal: 8),
@@ -517,13 +356,38 @@ class _RegisterScreenState extends State<RegisterScreen> {
             readOnly: true,
             onTap: _selectDate,
           ),
-          _buildModernTextField(controller: _locationController, label: 'Location', onTap: _fetchLocation),
-          _buildModernTextField(
-            controller: _phoneController,
-            label: 'Phone Number',
-            keyboardType: TextInputType.phone,
-            maxLength: 10,
-            prefixText: '+91 ',
+          _buildModernTextField(controller: _locationController, label: 'Location'),
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: DropdownButtonFormField<String>(
+              value: _selectedGender,
+              decoration: InputDecoration(
+                labelText: 'Gender',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: Theme.of(context).dividerColor),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: Theme.of(context).dividerColor),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: Theme.of(context).primaryColor ?? Colors.blue, width: 2), // Fallback to blue
+                ),
+                filled: true,
+                fillColor: Theme.of(context).cardColor,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              ),
+              items: ['Male', 'Female', 'Other']
+                  .map((gender) => DropdownMenuItem(value: gender, child: Text(gender)))
+                  .toList(),
+              onChanged: (value) {
+                setState(() {
+                  _selectedGender = value;
+                });
+              },
+            ),
           ),
         ],
       ),
@@ -567,52 +431,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
   }
 
-  // Build UI for Step 3 (OTP Verification)
-  Widget _buildStep3(BuildContext context) {
-    final screenWidth = MediaQuery.of(context).size.width;
-    return SingleChildScrollView(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Verify OTP',
-            style: TextStyle(fontSize: screenWidth * 0.05, fontWeight: FontWeight.bold, color: Theme.of(context).textTheme.bodyMedium?.color ?? Colors.black87),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Enter the OTP sent to +91 ${_phoneController.text.trim()}',
-            style: TextStyle(
-              fontSize: screenWidth * 0.04,
-              color: (Theme.of(context).textTheme.bodyMedium?.color ?? Colors.black87).withOpacity(0.7),
-            ),
-          ),
-          const SizedBox(height: 16),
-          _buildModernTextField(
-            controller: _otpController,
-            label: 'OTP',
-            keyboardType: TextInputType.number,
-            maxLength: 6,
-          ),
-          const SizedBox(height: 8),
-          TextButton(
-            onPressed: _isLoading || _resendToken == null ? null : () => _sendOTP(resendToken: _resendToken),
-            child: Text(
-              'Resend OTP',
-              style: TextStyle(color: _isLoading || _resendToken == null ? Colors.grey : (Theme.of(context).primaryColor ?? Colors.blue)),
-            ),
-          ),
-          const SizedBox(height: 16),
-          _buildAnimatedButton(label: 'Complete Registration', onPressed: _verifyOTPAndSubmit, isLoading: _isLoading),
-        ],
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
     final screenHeight = MediaQuery.of(context).size.height;
-    final steps = [_buildStep1(context), _buildStep2(context), _buildStep3(context)];
+    final steps = [_buildStep1(context), _buildStep2(context)];
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
@@ -692,19 +515,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           else
                             const SizedBox(),
                           _buildAnimatedButton(
-                            label: _currentPage == 2 ? 'Submit' : 'Next',
+                            label: _currentPage == 1 ? 'Submit' : 'Next',
                             onPressed: () async {
                               if (_currentPage == 0) {
                                 if (await _validateStep1()) {
-                                  setState(() => _isLoading = true);
-                                  await _sendOTP();
-                                  setState(() => _isLoading = false);
-                                  if (_verificationId != null) {
-                                    _pageController.nextPage(duration: animationDuration, curve: Curves.easeInOut);
-                                  }
+                                  _pageController.nextPage(duration: animationDuration, curve: Curves.easeInOut);
                                 }
                               } else if (_currentPage == 1 && _validateStep2()) {
-                                _pageController.nextPage(duration: animationDuration, curve: Curves.easeInOut);
+                                await _submitRegistration();
                               }
                             },
                             isLoading: _isLoading,

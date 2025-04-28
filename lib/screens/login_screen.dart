@@ -62,7 +62,7 @@ class _LoginScreenState extends State<LoginScreen> {
         verificationCompleted: (PhoneAuthCredential credential) async {
           print('Verification completed: $credential');
           await FirebaseAuth.instance.signInWithCredential(credential);
-          await _checkUserRegistration();
+          await _checkUserRegistration(phoneNumber);
         },
         verificationFailed: (FirebaseAuthException e) {
           print('Verification failed: ${e.code}, ${e.message}');
@@ -70,21 +70,19 @@ class _LoginScreenState extends State<LoginScreen> {
           switch (e.code) {
             case 'invalid-phone-number':
               errorMessage =
-                  'The phone number is invalid. Please check and try again.';
+              'The phone number is invalid. Please check and try again.';
               break;
             case 'too-many-requests':
               errorMessage = 'Too many requests. Please try again later.';
               break;
             case 'network-request-failed':
               errorMessage =
-                  'Network error. Please check your internet connection.';
+              'Network error. Please check your internet connection.';
               break;
             default:
               errorMessage = 'Verification failed: ${e.message}';
           }
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(SnackBar(content: Text(errorMessage)));
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(errorMessage)));
           setState(() => _isLoading = false);
         },
         codeSent: (String verificationId, int? resendToken) {
@@ -124,17 +122,16 @@ class _LoginScreenState extends State<LoginScreen> {
     try {
       print('Attempting to sign in with OTP: ${_pinController.text}');
       await FirebaseAuth.instance.signInWithCredential(credential);
-      await _checkUserRegistration();
+      final phoneNumber = '+91${_phoneController.text}';
+      await _checkUserRegistration(phoneNumber);
     } catch (e) {
       print('Error verifying OTP: $e');
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Invalid OTP: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Invalid OTP: $e')));
       setState(() => _isLoading = false);
     }
   }
 
-  Future<void> _checkUserRegistration() async {
+  Future<void> _checkUserRegistration(String phoneNumber) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
       print('No user signed in');
@@ -146,10 +143,10 @@ class _LoginScreenState extends State<LoginScreen> {
     try {
       print('Checking user registration for UID: ${user.uid}');
       final userDoc =
-          await FirebaseFirestore.instance
-              .collection('users')
-              .where('uid', isEqualTo: user.uid)
-              .get();
+      await FirebaseFirestore.instance
+          .collection('users')
+          .where('uid', isEqualTo: user.uid)
+          .get();
 
       if (userDoc.docs.isNotEmpty) {
         // User is registered, navigate to HomeScreen
@@ -165,12 +162,12 @@ class _LoginScreenState extends State<LoginScreen> {
           );
         }
       } else {
-        // User is not registered, navigate to RegisterScreen
-        print('User not registered, navigating to RegisterScreen');
+        // User is not registered, navigate to RegisterScreen with phone number
+        print('User not registered, navigating to RegisterScreen with phone: $phoneNumber');
         if (mounted) {
           Navigator.pushReplacement(
             context,
-            MaterialPageRoute(builder: (context) => const RegisterScreen()),
+            MaterialPageRoute(builder: (context) => RegisterScreen(phoneNumber: phoneNumber)),
           );
         }
       }
@@ -359,11 +356,11 @@ class _LoginScreenState extends State<LoginScreen> {
                                 duration: const Duration(milliseconds: 300),
                                 child: ElevatedButton(
                                   onPressed:
-                                      _isLoading || !_isPhoneValid
-                                          ? null
-                                          : (_verificationId == null
-                                              ? _verifyPhoneNumber
-                                              : _signInWithCode),
+                                  _isLoading || !_isPhoneValid
+                                      ? null
+                                      : (_verificationId == null
+                                      ? _verifyPhoneNumber
+                                      : _signInWithCode),
                                   style: ElevatedButton.styleFrom(
                                     backgroundColor: theme.colorScheme.primary,
                                     padding: const EdgeInsets.symmetric(
@@ -376,26 +373,26 @@ class _LoginScreenState extends State<LoginScreen> {
                                     elevation: 5,
                                   ),
                                   child:
-                                      _isLoading
-                                          ? const SizedBox(
-                                            width: 24,
-                                            height: 24,
-                                            child: CircularProgressIndicator(
-                                              color: Colors.white,
-                                              strokeWidth: 2,
-                                            ),
-                                          )
-                                          : Text(
-                                            _verificationId == null
-                                                ? 'Send OTP'
-                                                : 'Verify OTP',
-                                            style: const TextStyle(
-                                              fontSize: 16,
-                                              color: Colors.white,
-                                              fontWeight: FontWeight.bold,
-                                              fontFamily: 'Poppins',
-                                            ),
-                                          ),
+                                  _isLoading
+                                      ? const SizedBox(
+                                    width: 24,
+                                    height: 24,
+                                    child: CircularProgressIndicator(
+                                      color: Colors.white,
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                      : Text(
+                                    _verificationId == null
+                                        ? 'Send OTP'
+                                        : 'Verify OTP',
+                                    style: const TextStyle(
+                                      fontSize: 16,
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.bold,
+                                      fontFamily: 'Poppins',
+                                    ),
+                                  ),
                                 ),
                               ),
                             ),

@@ -108,7 +108,7 @@ class _SplashScreenState extends State<SplashScreen> {
               const SizedBox(height: 20),
               // App Title
               Text(
-                'Yuva Pulse',
+                'Yuva App',
                 style: TextStyle(
                   fontSize: 36,
                   fontWeight: FontWeight.bold,

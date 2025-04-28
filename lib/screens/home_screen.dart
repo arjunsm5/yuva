@@ -15,7 +15,6 @@ import 'package:yuva/screens/hubs_screen.dart';
 import 'package:yuva/screens/wallet_screen.dart';
 import 'package:yuva/screens/bookmarks_screen.dart';
 
-
 class HomeScreen extends StatefulWidget {
   final String userName;
 
@@ -42,40 +41,73 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    print('HomeScreen: initState called');
     _fetchUserData();
   }
 
   // Fetching user profile from Firestore
   Future<void> _fetchUserData() async {
+    print('HomeScreen: Fetching user data...');
     final User? user = FirebaseAuth.instance.currentUser;
     if (user != null) {
+      print('HomeScreen: Authenticated user UID: ${user.uid}');
       try {
+        print('HomeScreen: Fetching document from Firestore...');
         DocumentSnapshot userDoc =
         await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
 
         if (userDoc.exists) {
+          print('HomeScreen: User data retrieved successfully: ${userDoc.data()}');
           setState(() {
             _displayName = userDoc['name'] ?? widget.userName;
             _profileImageUrl = userDoc['profileImageUrl'];
           });
+        } else {
+          print('HomeScreen: No user document found for UID: ${user.uid}');
+          setState(() {
+            _displayName = widget.userName;
+          });
         }
       } catch (e) {
-        print('Error fetching user data: $e');
+        print('HomeScreen: Error fetching user data: $e');
         setState(() {
           _displayName = widget.userName;
         });
       }
+    } else {
+      print('HomeScreen: No authenticated user found.');
+      setState(() {
+        _displayName = widget.userName;
+      });
     }
   }
 
   void _onItemTapped(int index) {
+    print('HomeScreen: Bottom navigation tapped, index: $index');
     setState(() {
       _selectedIndex = index;
     });
+    print('HomeScreen: Displaying screen: ${_screens[index].runtimeType}');
+  }
+
+  // Function to get initials from the display name
+  String _getInitials(String name) {
+    if (name.isEmpty || name.trim().isEmpty) {
+      return '??'; // Default initials if name is empty
+    }
+    final nameParts = name.trim().split(' ');
+    if (nameParts.length > 1) {
+      return '${nameParts[0][0]}${nameParts[1][0]}'.toUpperCase();
+    } else if (name.length > 1) {
+      return name.substring(0, 2).toUpperCase();
+    } else {
+      return name.toUpperCase();
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    print('HomeScreen: Building UI...');
     return Scaffold(
       appBar: AppBar(
         title: Text('Welcome, ${_displayName ?? widget.userName}'),
@@ -85,14 +117,29 @@ class _HomeScreenState extends State<HomeScreen> {
           builder: (context) => IconButton(
             icon: CircleAvatar(
               radius: 16,
-              backgroundImage: _profileImageUrl != null
+              backgroundColor: Colors.blue[600], // Background color for fallback
+              backgroundImage: _profileImageUrl != null &&
+                  _profileImageUrl!.isNotEmpty &&
+                  Uri.tryParse(_profileImageUrl!)?.isAbsolute == true
                   ? NetworkImage(_profileImageUrl!)
                   : const AssetImage('assets/default_profile.png') as ImageProvider,
-              child: _profileImageUrl == null
-                  ? const Icon(Icons.person, size: 20, color: Colors.grey)
+              child: (_profileImageUrl == null ||
+                  _profileImageUrl!.isEmpty ||
+                  Uri.tryParse(_profileImageUrl!)?.isAbsolute != true)
+                  ? Text(
+                _getInitials(_displayName ?? widget.userName),
+                style: const TextStyle(
+                  fontSize: 16,
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                ),
+              )
                   : null,
             ),
-            onPressed: () => Scaffold.of(context).openDrawer(),
+            onPressed: () {
+              print('HomeScreen: Opening drawer...');
+              Scaffold.of(context).openDrawer();
+            },
           ),
         ),
       ),
@@ -109,14 +156,43 @@ class _HomeScreenState extends State<HomeScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    CircleAvatar(
-                      radius: 30,
-                      backgroundImage: _profileImageUrl != null
-                          ? NetworkImage(_profileImageUrl!)
-                          : const AssetImage('assets/default_profile.png') as ImageProvider,
-                      child: _profileImageUrl == null
-                          ? const Icon(Icons.person, size: 40, color: Colors.grey)
-                          : null,
+                    InkWell(
+                      onTap: () {
+                        print('HomeScreen: Navigating to ProfileScreen from Drawer profile image...');
+                        Navigator.pop(context); // Close the drawer
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => ProfileScreen(
+                              onProfileUpdated: _fetchUserData, // Pass callback to refresh data
+                            ),
+                          ),
+                        ).then((_) {
+                          print('HomeScreen: Returned from ProfileScreen, re-fetching user data...');
+                          _fetchUserData(); // Re-fetch data after returning
+                        });
+                      },
+                      child: CircleAvatar(
+                        radius: 30,
+                        backgroundColor: Colors.blue[600], // Background color for fallback
+                        backgroundImage: _profileImageUrl != null &&
+                            _profileImageUrl!.isNotEmpty &&
+                            Uri.tryParse(_profileImageUrl!)?.isAbsolute == true
+                            ? NetworkImage(_profileImageUrl!)
+                            : const AssetImage('assets/default_profile.png') as ImageProvider,
+                        child: (_profileImageUrl == null ||
+                            _profileImageUrl!.isEmpty ||
+                            Uri.tryParse(_profileImageUrl!)?.isAbsolute != true)
+                            ? Text(
+                          _getInitials(_displayName ?? widget.userName),
+                          style: const TextStyle(
+                            fontSize: 24,
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        )
+                            : null,
+                      ),
                     ),
                     const SizedBox(height: 16),
                     Text(
@@ -138,15 +214,26 @@ class _HomeScreenState extends State<HomeScreen> {
                 icon: Icons.person_outline,
                 title: 'Profile',
                 onTap: () {
+                  print('HomeScreen: Navigating to ProfileScreen from Drawer...');
                   Navigator.pop(context);
-                  Navigator.push(context,
-                      MaterialPageRoute(builder: (_) => const ProfileScreen()));
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => ProfileScreen(
+                        onProfileUpdated: _fetchUserData, // Pass callback to refresh data
+                      ),
+                    ),
+                  ).then((_) {
+                    print('HomeScreen: Returned from ProfileScreen, re-fetching user data...');
+                    _fetchUserData(); // Re-fetch data after returning
+                  });
                 },
               ),
               _buildDrawerItem(
                 icon: Icons.grid_view,
                 title: 'Hubs',
                 onTap: () {
+                  print('HomeScreen: Navigating to HubsScreen...');
                   Navigator.pop(context);
                   Navigator.push(context,
                       MaterialPageRoute(builder: (_) => const HubsScreen()));
@@ -156,6 +243,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 icon: Icons.account_balance_wallet_outlined,
                 title: 'Wallet',
                 onTap: () {
+                  print('HomeScreen: Navigating to WalletScreen...');
                   Navigator.pop(context);
                   Navigator.push(context,
                       MaterialPageRoute(builder: (_) => const WalletScreen()));
@@ -165,6 +253,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 icon: Icons.bookmark_border,
                 title: 'Bookmarks',
                 onTap: () {
+                  print('HomeScreen: Navigating to BookmarksScreen...');
                   Navigator.pop(context);
                   Navigator.push(context,
                       MaterialPageRoute(builder: (_) => const BookmarksScreen()));
@@ -174,6 +263,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 icon: Icons.settings_outlined,
                 title: 'Settings',
                 onTap: () {
+                  print('HomeScreen: Navigating to SettingsScreen...');
                   Navigator.pop(context);
                   Navigator.push(context,
                       MaterialPageRoute(builder: (_) => const SettingsScreen()));

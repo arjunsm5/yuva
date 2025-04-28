@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:yuva/screens/add_company_screen.dart';
 import 'create_challenge_screen.dart';
 import 'hub_create_screen.dart'; // Import for HubCreateScreen
 
@@ -87,6 +88,16 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
                 Navigator.push(
                   context,
                   MaterialPageRoute(builder: (context) => const HubCreateScreen()),
+                );
+              },
+            ),
+            _buildAdminButton(
+              context,
+              label: 'Add Company',
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => AddCompanyScreen()),
                 );
               },
             ),
