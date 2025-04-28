@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'create_challenge_screen.dart';
-import 'hub_create_screen.dart'; // Import for HubCreateScreen
+import '../challenge/create_challenge_screen.dart';
+import '../network/hub_create_screen.dart'; // Import for HubCreateScreen
 
 class AdminPanelScreen extends StatefulWidget {
   const AdminPanelScreen({super.key});

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_core/firebase_core.dart'; // Import Firebase Core
-import 'package:yuva/screens/splash_screen.dart'; // Import the SplashScreen
+import 'package:yuva/screens/ui/splash_screen.dart'; // Import the SplashScreen
 import 'package:yuva/utils/app_theme.dart'; // Import AppTheme for colors
 import 'package:yuva/utils/theme_provider.dart'; // Import ThemeProvider for theme state
 import 'package:firebase_app_check/firebase_app_check.dart'; // Import Firebase App Check

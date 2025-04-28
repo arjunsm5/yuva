@@ -10,7 +10,7 @@ import 'package:permission_handler/permission_handler.dart'; // Permission handl
 import 'package:device_info_plus/device_info_plus.dart'; // Device info for platform checks
 import 'package:geolocator/geolocator.dart'; // Geolocation services
 import 'package:geocoding/geocoding.dart'; // Geocoding for location names
-import 'package:yuva/screens/home_screen.dart'; // Navigation to HomeScreen (adjust 'yuva' to your app name)
+import 'package:yuva/screens/ui/home_screen.dart'; // Navigation to HomeScreen (adjust 'yuva' to your app name)
 import 'package:flutter_image_compress/flutter_image_compress.dart'; // Import for image compression
 import 'package:yuva/utils/app_theme.dart'; // Import AppTheme for colors
 import 'package:provider/provider.dart'; // Import Provider for theme access

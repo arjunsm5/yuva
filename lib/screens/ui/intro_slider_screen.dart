@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:lottie/lottie.dart';
-import 'package:yuva/screens/login_screen.dart'; // Import LoginScreen
+import 'package:yuva/screens/account/login_screen.dart'; // Import LoginScreen
 
 class IntroSliderScreen extends StatefulWidget {
   const IntroSliderScreen({super.key});

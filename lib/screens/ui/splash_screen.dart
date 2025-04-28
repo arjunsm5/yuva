@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart'; // For Firebase Authentication
 import 'package:cloud_firestore/cloud_firestore.dart'; // For Firestore
-import 'package:yuva/screens/intro_slider_screen.dart'; // Import IntroSliderScreen
-import 'package:yuva/screens/login_screen.dart'; // Import LoginScreen
-import 'package:yuva/screens/home_screen.dart'; // Import HomeScreen
+import 'package:yuva/screens/ui/intro_slider_screen.dart'; // Import IntroSliderScreen
+import 'package:yuva/screens/account/login_screen.dart'; // Import LoginScreen
+import 'package:yuva/screens/ui/home_screen.dart'; // Import HomeScreen
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
