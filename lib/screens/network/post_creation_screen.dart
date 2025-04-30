@@ -20,6 +20,7 @@ class _PostCreationScreenState extends State<PostCreationScreen> {
   Map<String, dynamic>? currentUser;
   List<Map<String, dynamic>> hubs = [];
   bool isLoading = true;
+  bool isSaving = false; // Flag to prevent multiple submissions
   final TextEditingController _postController = TextEditingController();
   final TextEditingController _linkController = TextEditingController();
 
@@ -45,7 +46,6 @@ class _PostCreationScreenState extends State<PostCreationScreen> {
   Future<void> _fetchUserData() async {
     try {
       final User? user = FirebaseAuth.instance.currentUser;
-      print('Current user UID: ${user?.uid}'); // Debug print
       if (user != null) {
         final userDoc = await FirebaseFirestore.instance
             .collection('users')
@@ -53,7 +53,6 @@ class _PostCreationScreenState extends State<PostCreationScreen> {
             .get();
 
         if (!userDoc.exists) {
-          // Create a user document if it doesn't exist
           String generatedUniqueName = 'User${user.uid.substring(0, 8)}';
           await FirebaseFirestore.instance
               .collection('users')
@@ -74,7 +73,6 @@ class _PostCreationScreenState extends State<PostCreationScreen> {
           });
         } else {
           Map<String, dynamic> userData = userDoc.data()!;
-          // Ensure uniqueName exists
           if (userData['uniqueName'] == null) {
             String generatedUniqueName = 'User${user.uid.substring(0, 8)}';
             await FirebaseFirestore.instance
@@ -86,12 +84,10 @@ class _PostCreationScreenState extends State<PostCreationScreen> {
 
           setState(() {
             currentUser = userData;
-            print('Fetched user data: $currentUser'); // Debug print
             isLoading = false;
           });
         }
       } else {
-        print('No user signed in');
         setState(() {
           isLoading = false;
         });
@@ -108,7 +104,6 @@ class _PostCreationScreenState extends State<PostCreationScreen> {
     try {
       final hubsSnapshot =
       await FirebaseFirestore.instance.collection('hubs').get();
-
       setState(() {
         hubs = hubsSnapshot.docs
             .map((doc) => {...doc.data(), 'id': doc.id})
@@ -122,15 +117,7 @@ class _PostCreationScreenState extends State<PostCreationScreen> {
   Future<List<String>> _uploadImages() async {
     List<String> imageUrls = [];
     final User? user = FirebaseAuth.instance.currentUser;
-    print('Attempting upload - User: ${user?.uid}'); // Debug print
-    if (user == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('User not signed in')),
-      );
-      return imageUrls;
-    }
-
-    if (selectedImages.isEmpty) return imageUrls;
+    if (user == null || selectedImages.isEmpty) return imageUrls;
 
     setState(() {
       uploadingImages = true;
@@ -140,8 +127,8 @@ class _PostCreationScreenState extends State<PostCreationScreen> {
       for (var imageFile in selectedImages) {
         final fileExt = path.extension(imageFile.path);
         final targetPath = '${imageFile.path}_compressed$fileExt';
-
         File? compressedFile;
+
         if (fileExt.toLowerCase() == '.jpg' || fileExt.toLowerCase() == '.jpeg') {
           final result = await FlutterImageCompress.compressAndGetFile(
             imageFile.path,
@@ -165,11 +152,8 @@ class _PostCreationScreenState extends State<PostCreationScreen> {
             .child(user.uid)
             .child('${DateTime.now().millisecondsSinceEpoch}$fileExt');
 
-        print(
-            'Uploading to path: post_images/${user.uid}/${DateTime.now().millisecondsSinceEpoch}$fileExt');
         final uploadTask = await storageRef.putFile(compressedFile);
         final downloadUrl = await uploadTask.ref.getDownloadURL();
-
         imageUrls.add(downloadUrl);
 
         if (compressedFile.path != imageFile.path) {
@@ -191,24 +175,42 @@ class _PostCreationScreenState extends State<PostCreationScreen> {
   }
 
   Future<void> _savePost() async {
-    if (_postController.text.trim().isEmpty || selectedHub.isEmpty) {
+    if (isSaving || _postController.text.trim().isEmpty || selectedHub.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please fill all required fields')),
       );
       return;
     }
 
+    setState(() {
+      isSaving = true;
+    });
+
+    // Show progress dialog
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const AlertDialog(
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(height: 16),
+            Text('Creating post...'),
+          ],
+        ),
+      ),
+    );
+
     try {
       List<String> imageUrls = await _uploadImages();
       final User? user = FirebaseAuth.instance.currentUser;
       if (user != null) {
-        // Ensure currentUser is not null and has uniqueName
         if (currentUser == null) {
-          await _fetchUserData(); // Re-fetch if currentUser is null
+          await _fetchUserData();
         }
-        String uniqueName = currentUser?['uniqueName'] ?? 'User${user.uid.substring(0, 8)}';
-
-        // Find the selected hub's data to get hubImage
+        String uniqueName =
+            currentUser?['uniqueName'] ?? 'User${user.uid.substring(0, 8)}';
         final selectedHubData = hubs.firstWhere(
               (hub) => hub['id'] == selectedHub,
           orElse: () => {'hubImage': null},
@@ -220,63 +222,65 @@ class _PostCreationScreenState extends State<PostCreationScreen> {
           'hubId': selectedHub,
           'userId': user.uid,
           'userName': isAnonymous ? uniqueName : (currentUser?['name'] ?? 'User'),
-         // 'userProfileImage': isAnonymous ? null : currentUser?['profileImageUrl'],
           'isAnonymous': isAnonymous,
           'uniqueName': uniqueName,
           'createdAt': FieldValue.serverTimestamp(),
-         // 'hubImage': hubImageUrl, // Add hubImage to post data
         };
 
         if (_linkController.text.isNotEmpty) {
           postData['link'] = _linkController.text;
         }
-
         if (showPollCreator) {
           List<String> validOptions = pollOptions
               .map((controller) => controller.text.trim())
               .where((option) => option.isNotEmpty)
               .toList();
-
           if (validOptions.length >= 2) {
             Map<String, int> votesMap = {};
             for (int i = 0; i < validOptions.length; i++) {
               votesMap[i.toString()] = 0;
             }
-
             postData['poll'] = {
               'options': validOptions,
               'votes': votesMap,
             };
           }
         }
-
         if (imageUrls.isNotEmpty) {
           postData['images'] = imageUrls;
         }
 
-        // Add the post to Firestore and get the DocumentReference
-        DocumentReference postRef = await FirebaseFirestore.instance.collection('posts').add(postData);
-
-        // Update the post with its own postId
-        await postRef.update({
-          'postId': postRef.id, // Save the postId to the document
+        // Use Firestore transaction to ensure atomicity
+        await FirebaseFirestore.instance.runTransaction((transaction) async {
+          DocumentReference postRef =
+          FirebaseFirestore.instance.collection('posts').doc();
+          postData['postId'] = postRef.id;
+          transaction.set(postRef, postData);
         });
 
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Post created successfully')),
         );
-        Navigator.pop(context);
+        Navigator.pop(context); // Close dialog
+        Navigator.pop(context); // Navigate back
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('You must be signed in to create a post')),
         );
+        Navigator.pop(context); // Close dialog
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error creating post: $e')),
       );
+      Navigator.pop(context); // Close dialog
+    } finally {
+      setState(() {
+        isSaving = false;
+      });
     }
   }
+
   Future<void> _pickImages() async {
     try {
       final pickedFiles = await _picker.pickMultiImage();
@@ -488,7 +492,8 @@ class _PostCreationScreenState extends State<PostCreationScreen> {
                                     shape: BoxShape.circle,
                                     boxShadow: [
                                       BoxShadow(
-                                        color: Colors.black.withOpacity(0.1),
+                                        color:
+                                        Colors.black.withOpacity(0.1),
                                         blurRadius: 4,
                                         offset: const Offset(0, 2),
                                       ),
@@ -523,7 +528,8 @@ class _PostCreationScreenState extends State<PostCreationScreen> {
                                   ),
                                   if (isAnonymous)
                                     Container(
-                                      margin: const EdgeInsets.only(left: 8),
+                                      margin:
+                                      const EdgeInsets.only(left: 8),
                                       padding: const EdgeInsets.symmetric(
                                         horizontal: 8,
                                         vertical: 2,
@@ -546,7 +552,8 @@ class _PostCreationScreenState extends State<PostCreationScreen> {
                               if (!isAnonymous &&
                                   currentUser?['uniqueName'] != null)
                                 Padding(
-                                  padding: const EdgeInsets.only(top: 2),
+                                  padding:
+                                  const EdgeInsets.only(top: 2),
                                   child: Text(
                                     '@${_getUniqueName()}',
                                     style: TextStyle(
@@ -578,18 +585,20 @@ class _PostCreationScreenState extends State<PostCreationScreen> {
                         child: DropdownButton<String>(
                           isExpanded: true,
                           hint: Padding(
-                            padding:
-                            const EdgeInsets.symmetric(horizontal: 16.0),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 16.0),
                             child: Row(
                               children: [
-                                Icon(Icons.grid_view, color: Colors.grey[700]),
+                                Icon(Icons.grid_view,
+                                    color: Colors.grey[700]),
                                 const SizedBox(width: 12),
                                 const Text('Select a pod'),
                               ],
                             ),
                           ),
                           value: selectedHub.isEmpty ? null : selectedHub,
-                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                          padding:
+                          const EdgeInsets.symmetric(horizontal: 8),
                           borderRadius: BorderRadius.circular(16),
                           items: hubs.map((hub) {
                             return DropdownMenuItem<String>(
@@ -600,11 +609,13 @@ class _PostCreationScreenState extends State<PostCreationScreen> {
                                     Container(
                                       width: 32,
                                       height: 32,
-                                      margin: const EdgeInsets.only(right: 12),
+                                      margin: const EdgeInsets.only(
+                                          right: 12),
                                       decoration: BoxDecoration(
                                         shape: BoxShape.circle,
                                         image: DecorationImage(
-                                          image: NetworkImage(hub['hubImage']),
+                                          image: NetworkImage(
+                                              hub['hubImage']),
                                           fit: BoxFit.cover,
                                         ),
                                       ),
@@ -613,7 +624,8 @@ class _PostCreationScreenState extends State<PostCreationScreen> {
                                     Container(
                                       width: 32,
                                       height: 32,
-                                      margin: const EdgeInsets.only(right: 12),
+                                      margin: const EdgeInsets.only(
+                                          right: 12),
                                       decoration: BoxDecoration(
                                         shape: BoxShape.circle,
                                         gradient: LinearGradient(
@@ -627,7 +639,8 @@ class _PostCreationScreenState extends State<PostCreationScreen> {
                                       ),
                                       child: Center(
                                         child: Text(
-                                          hub['name']?.substring(0, 1) ?? 'H',
+                                          hub['name']?.substring(0, 1) ??
+                                              'H',
                                           style: const TextStyle(
                                             color: Colors.white,
                                             fontWeight: FontWeight.bold,
@@ -868,8 +881,8 @@ class _PostCreationScreenState extends State<PostCreationScreen> {
                                   return Stack(
                                     children: [
                                       Container(
-                                        margin:
-                                        const EdgeInsets.only(right: 12),
+                                        margin: const EdgeInsets.only(
+                                            right: 12),
                                         width: 120,
                                         height: 120,
                                         decoration: BoxDecoration(
@@ -888,7 +901,8 @@ class _PostCreationScreenState extends State<PostCreationScreen> {
                                         child: GestureDetector(
                                           onTap: () => _removeImage(index),
                                           child: Container(
-                                            padding: const EdgeInsets.all(4),
+                                            padding:
+                                            const EdgeInsets.all(4),
                                             decoration: const BoxDecoration(
                                               color: Colors.black54,
                                               shape: BoxShape.circle,
@@ -925,7 +939,8 @@ class _PostCreationScreenState extends State<PostCreationScreen> {
                 ),
               ],
             ),
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            padding:
+            const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             child: SafeArea(
               child: Row(
                 children: [
@@ -942,7 +957,8 @@ class _PostCreationScreenState extends State<PostCreationScreen> {
                   IconButton(
                     icon: const Icon(Icons.bar_chart),
                     onPressed: _togglePollCreator,
-                    color: showPollCreator ? Colors.blue : Colors.grey[700],
+                    color:
+                    showPollCreator ? Colors.blue : Colors.grey[700],
                   ),
                   IconButton(
                     icon: const Icon(Icons.link),
@@ -955,7 +971,8 @@ class _PostCreationScreenState extends State<PostCreationScreen> {
                   ElevatedButton(
                     onPressed: (_postController.text.trim().isEmpty ||
                         selectedHub.isEmpty ||
-                        uploadingImages)
+                        uploadingImages ||
+                        isSaving)
                         ? null
                         : _savePost,
                     style: ElevatedButton.styleFrom(
@@ -970,13 +987,13 @@ class _PostCreationScreenState extends State<PostCreationScreen> {
                       padding: const EdgeInsets.symmetric(
                           horizontal: 24, vertical: 12),
                     ),
-                    child: uploadingImages
+                    child: (uploadingImages || isSaving)
                         ? const SizedBox(
                       width: 20,
                       height: 20,
                       child: CircularProgressIndicator(
-                        valueColor:
-                        AlwaysStoppedAnimation<Color>(Colors.white),
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                            Colors.white),
                         strokeWidth: 2.0,
                       ),
                     )

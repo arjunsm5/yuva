@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:yuva/screens/my_feed_post_screen.dart';
-import 'package:yuva/screens/post_creation_screen.dart';
-import 'package:yuva/screens/trending_post_screen.dart';
+import 'package:yuva/screens/network/my_feed_post_screen.dart';
+import 'package:yuva/screens/network/post_creation_screen.dart';
+import 'package:yuva/screens/network/trending_post_screen.dart';
 
 class NetworkingScreen extends StatefulWidget {
   const NetworkingScreen({super.key});

@@ -6,10 +6,10 @@ import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:image/image.dart' as img;
-import 'package:yuva/screens/skills_screen.dart';
-import 'package:yuva/screens/work_experience_screen.dart';
+import 'package:yuva/screens/profile/skills_screen.dart';
+import 'package:yuva/screens/profile/work_experience_screen.dart';
 
-import '../education_screen.dart';
+import '../profile/education_screen.dart';
 
 class EditProfileScreen extends StatefulWidget {
   final Map<String, dynamic> userData;

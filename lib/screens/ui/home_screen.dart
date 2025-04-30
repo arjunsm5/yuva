@@ -10,7 +10,7 @@ import 'package:yuva/screens/message/messages_screen.dart';
 import 'package:yuva/screens/network/networking_screen.dart'; // Renamed ConnectScreen
 
 // Drawer screen imports
-import 'package:yuva/screens/account/profile_screen.dart';
+import 'package:yuva/screens/profile/profile_screen.dart';
 import 'package:yuva/screens/network/hubs_screen.dart';
 import 'package:yuva/screens/challenge/wallet_screen.dart';
 import 'package:yuva/screens/network/bookmarks_screen.dart';

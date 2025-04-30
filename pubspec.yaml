@@ -55,6 +55,9 @@ dependencies:
   http: ^1.2.2
   html: ^0.15.4
   timeago: ^3.5.0
+  share_plus: ^10.0.0  # Add this line
+  url_launcher: ^6.3.0
+  debounce_throttle: ^2.0.0
 
 
 
