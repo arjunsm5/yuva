@@ -15,10 +15,9 @@ class MyFeedPostScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Ensure Firestore is initialized with the correct region
     FirebaseFirestore.instance.settings = const Settings(
       persistenceEnabled: true,
-      host: 'firestore.googleapis.com', // Default host, adjust if using a custom emulator
+      host: 'firestore.googleapis.com',
     );
 
     return Scaffold(
@@ -36,7 +35,6 @@ class MyFeedPostScreen extends StatelessWidget {
               );
             }
             if (snapshot.hasError) {
-              // Debug print for errors
               print('StreamBuilder error: ${snapshot.error}');
               return Center(
                 child: Text(
@@ -46,7 +44,6 @@ class MyFeedPostScreen extends StatelessWidget {
               );
             }
             if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-              // Debug print for empty data
               print('No posts found in Firestore');
               return const Center(
                 child: Text(
@@ -55,13 +52,10 @@ class MyFeedPostScreen extends StatelessWidget {
                 ),
               );
             }
-
-            // Debug print for successful data fetch
             print('Posts fetched: ${snapshot.data!.docs.length}');
             for (var doc in snapshot.data!.docs) {
               print('Post ID: ${doc.id}, Data: ${doc.data()}');
             }
-
             return ListView.builder(
               itemCount: snapshot.data!.docs.length,
               itemBuilder: (context, index) {
@@ -90,31 +84,26 @@ class PostItem extends StatefulWidget {
 }
 
 class _PostItemState extends State<PostItem> {
-  late int score; // Stores the net score (upvotes - downvotes)
-  late bool hasUpvoted; // Tracks if the current user has upvoted
-  late bool hasDownvoted; // Tracks if the current user has downvoted
-  late bool isBookmarked; // Tracks if the current user has bookmarked
-  late String currentUserId; // Current authenticated user's ID
-  bool isLoading = false; // Loading state for async operations
-  Map<String, dynamic>? userData; // Cached user data
-  Map<String, dynamic>? hubData; // Cached hub data
-  String? userVote; // Tracks the user's poll vote
+  late int score;
+  late bool hasUpvoted;
+  late bool hasDownvoted;
+  late bool isBookmarked;
+  late String currentUserId;
+  bool isLoading = false;
+  Map<String, dynamic>? userData;
+  Map<String, dynamic>? hubData;
+  String? userVote;
 
   @override
   void initState() {
     super.initState();
-    // Initialize score from post data
-    score = ((widget.postData['upvotes'] ?? 0) - (widget.postData['downvotes'] ?? 0));
-    // Initialize user interaction states
     currentUserId = FirebaseAuth.instance.currentUser?.uid ?? '';
-    hasUpvoted = (widget.postData['upvotedBy'] as List<dynamic>?)?.contains(currentUserId) ?? false;
-    hasDownvoted = false; // Assuming no downvote tracking in upvotedBy for simplicity
-    isBookmarked = (widget.postData['bookmarkedBy'] as List<dynamic>?)?.contains(currentUserId) ?? false;
-
-    // Debug print for initialization
+    score = ((widget.postData['upvotes'] ?? 0) - (widget.postData['downvotes'] ?? 0));
+    hasUpvoted = false; // Reset initial state
+    hasDownvoted = false; // Reset initial state
+    isBookmarked = false; // Reset initial state
     print('PostItem init - Post ID: ${widget.postId}, User ID: $currentUserId, Data: ${widget.postData}');
 
-    // Listen for auth state changes
     FirebaseAuth.instance.authStateChanges().listen((User? user) {
       if (mounted) {
         setState(() {
@@ -134,11 +123,9 @@ class _PostItemState extends State<PostItem> {
   }
 
   Future<void> _fetchInitialData() async {
-    // Fetch user data if not anonymous
     if (!(widget.postData['isAnonymous'] ?? false)) {
       userData = await _fetchUserData();
     }
-    // Fetch hub data
     hubData = await _fetchHubData(widget.postData['hubId']);
     if (mounted) setState(() {});
   }
@@ -151,6 +138,7 @@ class _PostItemState extends State<PostItem> {
       if (mounted) {
         setState(() {
           hasUpvoted = (data?['upvotedBy'] as List<dynamic>?)?.contains(currentUserId) ?? false;
+          hasDownvoted = (data?['downvotedBy'] as List<dynamic>?)?.contains(currentUserId) ?? false;
           isBookmarked = (data?['bookmarkedBy'] as List<dynamic>?)?.contains(currentUserId) ?? false;
         });
       }
@@ -251,6 +239,7 @@ class _PostItemState extends State<PostItem> {
 
       final postDoc = await postRef.get();
       final currentUpvotedBy = (postDoc.data()?['upvotedBy'] as List<dynamic>?) ?? [];
+      final currentDownvotedBy = (postDoc.data()?['downvotedBy'] as List<dynamic>?) ?? [];
 
       if (voteType == 'upvote') {
         if (hasUpvoted) {
@@ -272,8 +261,9 @@ class _PostItemState extends State<PostItem> {
             });
             batch.update(postRef, {
               'downvotes': FieldValue.increment(-1),
+              'downvotedBy': FieldValue.arrayRemove([currentUserId]),
               'upvotes': FieldValue.increment(1),
-              'upvotedBy': FieldValue.arrayRemove([currentUserId])
+              'upvotedBy': FieldValue.arrayUnion([currentUserId])
             });
           } else {
             setState(() {
@@ -298,7 +288,10 @@ class _PostItemState extends State<PostItem> {
             hasDownvoted = false;
             score++;
           });
-          batch.update(postRef, {'downvotes': FieldValue.increment(-1)});
+          batch.update(postRef, {
+            'downvotes': FieldValue.increment(-1),
+            'downvotedBy': FieldValue.arrayRemove([currentUserId])
+          });
           batch.delete(userVoteRef);
         } else {
           if (hasUpvoted) {
@@ -309,15 +302,19 @@ class _PostItemState extends State<PostItem> {
             });
             batch.update(postRef, {
               'upvotes': FieldValue.increment(-1),
+              'upvotedBy': FieldValue.arrayRemove([currentUserId]),
               'downvotes': FieldValue.increment(1),
-              'upvotedBy': FieldValue.arrayRemove([currentUserId])
+              'downvotedBy': FieldValue.arrayUnion([currentUserId])
             });
           } else {
             setState(() {
               hasDownvoted = true;
               score--;
             });
-            batch.update(postRef, {'downvotes': FieldValue.increment(1)});
+            batch.update(postRef, {
+              'downvotes': FieldValue.increment(1),
+              'downvotedBy': FieldValue.arrayUnion([currentUserId])
+            });
           }
           batch.set(userVoteRef, {
             'type': 'downvote',
@@ -356,8 +353,6 @@ class _PostItemState extends State<PostItem> {
           .collection('bookmarks')
           .doc(widget.postId);
       final postRef = FirebaseFirestore.instance.collection('posts').doc(widget.postId);
-      final postDoc = await postRef.get();
-      final currentBookmarkedBy = (postDoc.data()?['bookmarkedBy'] as List<dynamic>?) ?? [];
 
       if (isBookmarked) {
         print('Deleting bookmark for post ${widget.postId}');
@@ -713,7 +708,6 @@ class _PostItemState extends State<PostItem> {
     final votesMap = poll['votes'] as Map<String, dynamic>;
     final votes = List<int>.generate(options.length, (index) => votesMap[index.toString()] as int? ?? 0);
     final totalVotes = votes.fold(0, (sum, vote) => sum + vote);
-    final List<String> emojis = ['🛍️', '📱', '🔍'];
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -732,23 +726,11 @@ class _PostItemState extends State<PostItem> {
             child: Container(
               padding: const EdgeInsets.symmetric(vertical: 10.0, horizontal: 12.0),
               decoration: BoxDecoration(
-                color: Colors.grey[900],
+                border: Border.all(color: Colors.transparent),
                 borderRadius: BorderRadius.circular(8),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.2),
-                    blurRadius: 4,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
               ),
               child: Row(
                 children: [
-                  Text(
-                    emojis[index],
-                    style: const TextStyle(fontSize: 20),
-                  ),
-                  const SizedBox(width: 8),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,

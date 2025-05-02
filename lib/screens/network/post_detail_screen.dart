@@ -1,10 +1,10 @@
-// Post Detail Screen for comments
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:timeago/timeago.dart' as timeago;
+
 
 import 'my_feed_post_screen.dart';
 
@@ -380,10 +380,8 @@ class _CommentItemState extends State<CommentItem> {
                 ),
                 onTap: () {
                   Navigator.pop(context);
-                  // Copy comment text to clipboard
                   final commentText = widget.commentData['text'] ?? '';
                   if (commentText.isNotEmpty) {
-                    // Implement clipboard copy
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(content: Text('Comment copied to clipboard')),
                     );
@@ -490,7 +488,7 @@ class _CommentItemState extends State<CommentItem> {
         'commentOwner': widget.commentData['userId'],
         'reason': reason,
         'timestamp': FieldValue.serverTimestamp(),
-        'status': 'pending', // For admin to review
+        'status': 'pending',
       });
 
       ScaffoldMessenger.of(context).showSnackBar(
@@ -511,7 +509,6 @@ class _CommentItemState extends State<CommentItem> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // User profile image
           widget.commentData['userProfileImageUrl'] != null &&
               widget.commentData['userProfileImageUrl'].isNotEmpty
               ? ClipOval(
@@ -544,13 +541,10 @@ class _CommentItemState extends State<CommentItem> {
             child: const Icon(Icons.person, color: Colors.white, size: 20),
           ),
           const SizedBox(width: 12),
-
-          // Comment content
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Username and timestamp
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -571,18 +565,13 @@ class _CommentItemState extends State<CommentItem> {
                   ],
                 ),
                 const SizedBox(height: 4),
-
-                // Comment text
                 Text(
                   widget.commentData['text'] ?? '',
                   style: const TextStyle(color: Colors.white),
                 ),
                 const SizedBox(height: 8),
-
-                // Like and reply buttons
                 Row(
                   children: [
-                    // Like button
                     GestureDetector(
                       onTap: _toggleLike,
                       child: Row(
@@ -601,11 +590,8 @@ class _CommentItemState extends State<CommentItem> {
                       ),
                     ),
                     const SizedBox(width: 16),
-
-                    // Reply button
                     GestureDetector(
                       onTap: () {
-                        // Implement reply functionality
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(content: Text('Reply functionality coming soon')),
                         );
@@ -616,8 +602,6 @@ class _CommentItemState extends State<CommentItem> {
                       ),
                     ),
                     const Spacer(),
-
-                    // More options button
                     IconButton(
                       icon: Icon(
                         Icons.more_horiz,
