@@ -1,6 +1,7 @@
-import 'package:android/main.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import '../lib/main.dart';
 
 void main() {
   testWidgets('Yuva app loads and adds opportunity', (

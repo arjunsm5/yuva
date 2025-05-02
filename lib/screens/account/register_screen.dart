@@ -1,59 +1,64 @@
-import 'dart:io'; // Import for file handling (e.g., college ID image)
-import 'dart:async'; // Import for timeout handling
-import 'package:flutter/material.dart'; // Core Flutter UI library
-import 'package:cloud_firestore/cloud_firestore.dart'; // Firestore for user data storage
-import 'package:firebase_auth/firebase_auth.dart'; // Firebase Authentication for OTP
-import 'package:firebase_storage/firebase_storage.dart'; // Firebase Storage for image upload
-import 'package:image_picker/image_picker.dart'; // Library for picking images
-import 'package:intl/intl.dart'; // Date formatting
-import 'package:permission_handler/permission_handler.dart'; // Permission handling
-import 'package:device_info_plus/device_info_plus.dart'; // Device info for platform checks
-import 'package:geolocator/geolocator.dart'; // Geolocation services
-import 'package:geocoding/geocoding.dart'; // Geocoding for location names
- // Navigation to HomeScreen (adjust 'yuva' to your app name)
-import 'package:flutter_image_compress/flutter_image_compress.dart'; // Import for image compression
-import 'package:yuva/utils/app_theme.dart'; // Import AppTheme for colors
-import 'package:provider/provider.dart'; // Import Provider for theme access
-
-import '../ui/home_screen.dart'; // Import ThemeProvider for theme state
+import 'dart:io';
+import 'dart:async';
+import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:intl/intl.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:device_info_plus/device_info_plus.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:geocoding/geocoding.dart';
+import 'package:flutter_image_compress/flutter_image_compress.dart';
+import 'package:yuva/utils/app_theme.dart';
+import 'package:provider/provider.dart';
+import '../ui/home_screen.dart';
 
 class RegisterScreen extends StatefulWidget {
-  const RegisterScreen({super.key, required String phoneNumber});
+  final String? phoneNumber;
+
+  const RegisterScreen({super.key, required this.phoneNumber});
 
   @override
   State<RegisterScreen> createState() => _RegisterScreenState();
 }
 
 class _RegisterScreenState extends State<RegisterScreen> {
-  final PageController _pageController = PageController(); // Controls page navigation
-  final GlobalKey _pageViewKey = GlobalKey(); // Key for the PageView widget
-  int _currentPage = 0; // Tracks the current step (0, 1, or 2)
-  bool _isLoading = false; // Loading state for buttons
-  bool _isLayoutReady = false; // Ensures layout is ready after initialization
+  final PageController _pageController = PageController();
+  final GlobalKey _pageViewKey = GlobalKey();
+  int _currentPage = 0;
+  bool _isLoading = false;
+  bool _isLayoutReady = true;
 
-  // Text controllers for form fields
   final _nameController = TextEditingController();
   final _dobController = TextEditingController();
   final _locationController = TextEditingController();
-  final _phoneController = TextEditingController();
   final _collegeNameController = TextEditingController();
-  final _otpController = TextEditingController();
-  File? _collegeIdImage; // Stores the selected college ID image
+  final _otherInterestController = TextEditingController();
 
-  DateTime? _selectedDate; // Stores the selected date of birth
-  String? _verificationId; // Stores the verification ID from Firebase for OTP
-  int? _resendToken; // Token for resending OTP without reCAPTCHA
+  File? _collegeIdImage;
+  DateTime? _selectedDate;
 
-  // Lazy access to FirebaseAuth instance
-  FirebaseAuth get _auth => FirebaseAuth.instance;
+  String? _gender;
+  final List<String> _genders = ['Male', 'Female', 'Other'];
 
-  // Animation duration constant
-  static const animationDuration = Duration(milliseconds: 300); // Define animation duration
+  final List<String> _trendingInterests = [
+    'Book Nerd', 'Music Enthusiast', 'Video Games', 'Traveling',
+    'Technology', 'Swimming', 'Shopping', 'Art',
+    'Photography', 'Design', 'Cooking', 'Gaming',
+    'Fitness', 'Reading'
+  ];
+  final List<String> _selectedInterests = [];
+  List<String> _filteredInterests = [];
+
+  static const animationDuration = Duration(milliseconds: 300);
 
   @override
   void initState() {
     super.initState();
-    // Ensure layout is ready after the first frame
+    _filteredInterests = _trendingInterests;
+    _otherInterestController.addListener(_filterInterests);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       setState(() => _isLayoutReady = true);
     });
@@ -61,18 +66,24 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
   @override
   void dispose() {
-    // Clean up controllers to prevent memory leaks
     _nameController.dispose();
     _dobController.dispose();
     _locationController.dispose();
-    _phoneController.dispose();
     _collegeNameController.dispose();
-    _otpController.dispose();
+    _otherInterestController.dispose();
     _pageController.dispose();
     super.dispose();
   }
 
-  // Fetch the user's current location with timeout
+  void _filterInterests() {
+    final query = _otherInterestController.text.toLowerCase();
+    setState(() {
+      _filteredInterests = _trendingInterests
+          .where((interest) => interest.toLowerCase().contains(query))
+          .toList();
+    });
+  }
+
   Future<void> _fetchLocation() async {
     setState(() => _isLoading = true);
     try {
@@ -81,95 +92,119 @@ class _RegisterScreenState extends State<RegisterScreen> {
         final androidInfo = await deviceInfo.androidInfo;
         if (androidInfo.isPhysicalDevice != true) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Location services may not be available on emulators. Please enter manually.')),
+            SnackBar(content: Text('Location services may not be available on emulators. Please enter manually.')),
           );
-          setState(() => _isLoading = false);
           return;
         }
       }
-
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled().timeout(const Duration(seconds: 5));
       if (!serviceEnabled) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Location services are disabled. Please enter manually.')),
+          SnackBar(content: Text('Location services are disabled. Please enter manually.')),
         );
-        setState(() => _isLoading = false);
         return;
       }
-
       LocationPermission permission = await Geolocator.checkPermission().timeout(const Duration(seconds: 5));
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission().timeout(const Duration(seconds: 5));
         if (permission == LocationPermission.denied) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Location permission denied. Please enter manually.')),
+            SnackBar(content: Text('Location permission denied. Please enter manually.')),
           );
-          setState(() => _isLoading = false);
           return;
         }
       }
-
       if (permission == LocationPermission.deniedForever) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: const Text('Location permission permanently denied. Please enable it in settings or enter manually.'),
-            action: SnackBarAction(label: 'Open Settings', onPressed: () => openAppSettings()),
+            content: Text('Location permission permanently denied. Please enable it in settings or enter manually.'),
+            action: SnackBarAction(
+              label: 'Open Settings',
+              onPressed: () => openAppSettings(),
+              textColor: AppTheme.getPrimary(context),
+            ),
           ),
         );
-        setState(() => _isLoading = false);
         return;
       }
-
       Position position = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.low,
       ).timeout(const Duration(seconds: 10), onTimeout: () => throw TimeoutException('Location fetch timed out'));
-
       List<Placemark> placemarks = await placemarkFromCoordinates(
         position.latitude,
         position.longitude,
       ).timeout(const Duration(seconds: 5));
-
       if (placemarks.isNotEmpty) {
         Placemark placemark = placemarks.first;
         String city = placemark.locality ?? placemark.subAdministrativeArea ?? 'Unknown';
         setState(() => _locationController.text = city);
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Unable to fetch location. Please enter manually.')),
+          SnackBar(content: Text('Unable to fetch location. Please enter manually.')),
         );
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error fetching location: $e. Please enter manually.')),
       );
-      print('Location fetch error: $e');
     } finally {
       setState(() => _isLoading = false);
     }
   }
 
-  // Open date picker for DOB
   Future<void> _selectDate() async {
     final picked = await showDatePicker(
       context: context,
       initialDate: DateTime(2000),
       firstDate: DateTime(1950),
       lastDate: DateTime.now(),
-      builder: (context, child) => Theme(
-        data: Theme.of(context).copyWith(
-          colorScheme: ColorScheme.light(
-            primary: Theme.of(context).primaryColor ?? Colors.blue, // Fallback to blue if null
-            onPrimary: Colors.white,
-            onSurface: Theme.of(context).textTheme.bodyMedium?.color ?? Colors.black87, // Fallback to black87
-          ),
-          textButtonTheme: TextButtonThemeData(
-            style: TextButton.styleFrom(
-              foregroundColor: Theme.of(context).primaryColor ?? Colors.blue, // Fallback to blue
+      builder: (context, child) {
+        final isDarkMode = AppTheme.isDark(context);
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: isDarkMode
+                ? ColorScheme.dark(
+              primary: AppTheme.getPrimary(context),
+              onPrimary: AppTheme.getTextPrimary(context),
+              surface: AppTheme.getSurface(context),
+              onSurface: AppTheme.getTextPrimary(context),
+              background: AppTheme.getBackground(context),
+              onBackground: AppTheme.getTextPrimary(context),
+            )
+                : ColorScheme.light(
+              primary: AppTheme.getPrimary(context),
+              onPrimary: AppTheme.getTextPrimary(context),
+              surface: AppTheme.getSurface(context),
+              onSurface: AppTheme.getTextPrimary(context),
+              background: AppTheme.getBackground(context),
+              onBackground: AppTheme.getTextPrimary(context),
+            ),
+            dialogBackgroundColor: AppTheme.getSurface(context),
+            textButtonTheme: TextButtonThemeData(
+              style: TextButton.styleFrom(
+                foregroundColor: AppTheme.getPrimary(context),
+              ),
+            ),
+            datePickerTheme: DatePickerThemeData(
+              backgroundColor: AppTheme.getSurface(context),
+              headerBackgroundColor: AppTheme.getPrimary(context),
+              headerForegroundColor: AppTheme.getTextPrimary(context),
+              dayForegroundColor: WidgetStateProperty.all(AppTheme.getTextPrimary(context)),
+              dayBackgroundColor: WidgetStateProperty.resolveWith((states) {
+                if (states.contains(WidgetState.selected)) {
+                  return AppTheme.getPrimary(context);
+                }
+                return null;
+              }),
+              todayForegroundColor: WidgetStateProperty.all(AppTheme.getAccent(context)),
+              todayBorder: BorderSide(color: AppTheme.getAccent(context)),
+              yearForegroundColor: WidgetStateProperty.all(AppTheme.getTextPrimary(context)),
+              surfaceTintColor: Colors.transparent,
             ),
           ),
-        ),
-        child: child!,
-      ),
+          child: child!,
+        );
+      },
     );
     if (picked != null) {
       setState(() {
@@ -179,13 +214,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
     }
   }
 
-  // Pick an image from gallery
   Future<void> _pickImage() async {
     setState(() => _isLoading = true);
     Permission permission = Platform.isAndroid && (await DeviceInfoPlugin().androidInfo).version.sdkInt >= 33 ? Permission.photos : Permission.storage;
     var status = await permission.status;
     if (!status.isGranted) status = await permission.request();
-
     if (status.isGranted) {
       try {
         final pickedImage = await ImagePicker().pickImage(source: ImageSource.gallery);
@@ -196,17 +229,20 @@ class _RegisterScreenState extends State<RegisterScreen> {
     } else if (status.isPermanentlyDenied) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: const Text('Photo access is permanently denied. Please enable it in settings.'),
-          action: SnackBarAction(label: 'Open Settings', onPressed: () => openAppSettings()),
+          content: Text('Photo access is permanently denied. Please enable it in settings.'),
+          action: SnackBarAction(
+            label: 'Open Settings',
+            onPressed: () => openAppSettings(),
+            textColor: AppTheme.getPrimary(context),
+          ),
         ),
       );
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Photo access denied')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Photo access denied')));
     }
     setState(() => _isLoading = false);
   }
 
-  // Compress the image before upload
   Future<File?> _compressImage(File imageFile) async {
     try {
       final tempDir = Directory.systemTemp;
@@ -218,7 +254,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
         minWidth: 800,
         minHeight: 600,
       );
-
       if (compressedImage == null) throw Exception('Image compression failed');
       print('Original size: ${(await imageFile.length()) / 1024} KB');
       print('Compressed size: ${(await compressedImage.length()) / 1024} KB');
@@ -230,154 +265,86 @@ class _RegisterScreenState extends State<RegisterScreen> {
     }
   }
 
-  // Validate Step 1 (Personal Information) with phone number check
   Future<bool> _validateStep1() async {
     if (_nameController.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please enter your full name')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Please enter your full name')));
       return false;
     }
     if (_dobController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please select your date of birth')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Please select your date of birth')));
       return false;
     }
     if (_locationController.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please enter your location')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Please enter your location')));
       return false;
     }
-    if (_phoneController.text.trim().length != 10) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please enter a valid 10-digit phone number')));
-      return false;
-    }
-
-    final phoneNumber = "+91${_phoneController.text.trim()}";
-    try {
-      final querySnapshot = await FirebaseFirestore.instance.collection('users').where('phone', isEqualTo: phoneNumber).get();
-      if (querySnapshot.docs.isNotEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('This phone number is already registered')));
-        return false;
-      }
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error checking phone number: $e')));
+    if (_gender == null) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Please select your gender')));
       return false;
     }
     return true;
   }
 
-  // Validate Step 2 (College Details)
   bool _validateStep2() {
     if (_collegeNameController.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please enter your college name')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Please enter your college name')));
       return false;
     }
     if (_collegeIdImage == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please upload your college ID')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Please upload your college ID')));
       return false;
     }
     return true;
   }
 
-  // Validate Step 3 (OTP)
   bool _validateStep3() {
-    if (_otpController.text.trim().isEmpty || _otpController.text.trim().length != 6) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please enter a valid 6-digit OTP')));
+    if (_selectedInterests.length < 3) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Please select at least 3 interests')));
       return false;
     }
     return true;
   }
 
-  // Send OTP to the user's phone number with resend support
-  Future<void> _sendOTP({int? resendToken}) async {
+  Future<void> _submitRegistration() async {
     setState(() => _isLoading = true);
     try {
-      final phoneNumber = "+91${_phoneController.text.trim()}";
-      print('Sending OTP to: $phoneNumber with resendToken: $resendToken');
-      await _auth.verifyPhoneNumber(
-        phoneNumber: phoneNumber,
-        forceResendingToken: resendToken,
-        verificationCompleted: (PhoneAuthCredential credential) async {
-          print('Verification completed automatically: ${credential.smsCode}');
-          await _auth.signInWithCredential(credential);
-          _navigateToHome();
-        },
-        verificationFailed: (FirebaseAuthException e) {
-          print('Verification failed: ${e.message}, Code: ${e.code}');
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to send OTP: ${e.message}')));
-        },
-        codeSent: (String verificationId, int? resendToken) {
-          print('OTP sent, verificationId: $verificationId, resendToken: $resendToken');
-          setState(() {
-            _verificationId = verificationId;
-            this._resendToken = resendToken;
-          });
-        },
-        codeAutoRetrievalTimeout: (String verificationId) {
-          print('Auto retrieval timeout, verificationId: $verificationId');
-          setState(() => _verificationId = verificationId);
-        },
-      );
-    } catch (e) {
-      print('Error sending OTP: $e');
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error sending OTP: $e')));
-    } finally {
-      setState(() => _isLoading = false);
-    }
-  }
-
-  // Verify OTP and complete registration with image compression
-  Future<void> _verifyOTPAndSubmit() async {
-    if (!_validateStep3()) return;
-
-    setState(() => _isLoading = true);
-    try {
-      PhoneAuthCredential credential = PhoneAuthProvider.credential(
-        verificationId: _verificationId!,
-        smsCode: _otpController.text.trim(),
-      );
-      await _auth.signInWithCredential(credential);
-      print('User authenticated: ${_auth.currentUser?.uid}');
-
-      await Future.delayed(const Duration(milliseconds: 500));
-
       String imageUrl = '';
       if (_collegeIdImage != null) {
-        if (!_collegeIdImage!.existsSync()) throw Exception('College ID image file does not exist');
-
         File? compressedImage = await _compressImage(_collegeIdImage!);
-        if (compressedImage == null) throw Exception('Failed to compress image, cannot proceed with upload');
-
+        if (compressedImage == null) throw Exception('Failed to compress image');
         final storageRef = FirebaseStorage.instance.ref('college_ids/${DateTime.now().millisecondsSinceEpoch}.jpg');
         await storageRef.putFile(compressedImage);
         await Future.delayed(const Duration(seconds: 1));
         imageUrl = await storageRef.getDownloadURL();
       }
 
-      if (_auth.currentUser != null) {
-        await FirebaseFirestore.instance.collection('users').add({
-          'name': _nameController.text.trim(),
-          'dob': _dobController.text.trim(),
-          'location': _locationController.text.trim(),
-          'phone': "+91${_phoneController.text.trim()}",
-          'collegeName': _collegeNameController.text.trim(),
-          'collegeIdUrl': imageUrl,
-          'createdAt': FieldValue.serverTimestamp(),
-          'uid': _auth.currentUser!.uid,
-        });
-        print('User data saved to Firestore');
-      } else {
-        throw Exception('No authenticated user found');
-      }
+      await FirebaseFirestore.instance.collection('users').add({
+        'name': _nameController.text.trim(),
+        'dob': _dobController.text.trim(),
+        'location': _locationController.text.trim(),
+        'gender': _gender,
+        'phone': widget.phoneNumber,
+        'collegeName': _collegeNameController.text.trim(),
+        'collegeIdUrl': imageUrl,
+        'interests': _selectedInterests,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
 
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Registration successful')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Registration successful'),
+        backgroundColor: AppTheme.getSuccess(context),
+      ));
       _navigateToHome();
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to verify OTP or register: $e')));
-      print('Error details: $e');
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Registration failed: $e'),
+        backgroundColor: AppTheme.getError(context),
+      ));
     } finally {
       setState(() => _isLoading = false);
     }
   }
 
-  // Navigate to HomeScreen
   void _navigateToHome() {
     Navigator.pushReplacement(
       context,
@@ -385,7 +352,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
   }
 
-  // Build step indicators (dots) for multi-step form
   Widget _buildStepIndicator(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
     final indicatorWidth = screenWidth * 0.15;
@@ -398,7 +364,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
           height: 12,
           width: _currentPage == index ? indicatorWidth : 12,
           decoration: BoxDecoration(
-            color: _currentPage == index ? (Theme.of(context).primaryColor ?? Colors.blue) : Colors.grey[300], // Fallback to blue if primaryColor is null
+            color: _currentPage == index
+                ? AppTheme.getPrimary(context)
+                : AppTheme.getTextSecondary(context).withOpacity(0.3),
             borderRadius: BorderRadius.circular(12),
           ),
         );
@@ -406,7 +374,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
   }
 
-  // Build a modern text field with custom styling
   Widget _buildModernTextField({
     required TextEditingController controller,
     required String label,
@@ -419,86 +386,101 @@ class _RegisterScreenState extends State<RegisterScreen> {
   }) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
-      child: TextFormField(
-        controller: controller,
-        decoration: InputDecoration(
-          labelText: label,
-          prefixText: prefixText,
-          suffixIcon: suffixIcon != null ? Icon(suffixIcon, color: Theme.of(context).primaryColor ?? Colors.blue) : null, // Fallback to blue
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: Theme.of(context).dividerColor),
-          ),
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: Theme.of(context).dividerColor),
-          ),
-          focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: Theme.of(context).primaryColor ?? Colors.blue, width: 2), // Fallback to blue
-          ),
-          filled: true,
-          fillColor: Theme.of(context).cardColor,
-          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        ),
-        keyboardType: keyboardType,
-        maxLength: maxLength,
-        readOnly: readOnly,
-        onTap: onTap,
-        textCapitalization: label == 'Full Name' ? TextCapitalization.words : TextCapitalization.none,
-      ),
-    );
-  }
-
-  // Build an animated button with loading state
-  Widget _buildAnimatedButton({
-    required String label,
-    required VoidCallback onPressed,
-    bool isLoading = false,
-    double? width,
-  }) {
-    final primaryColor = Theme.of(context).primaryColor ?? Colors.blue; // Fallback to blue if primaryColor is null
-    return ConstrainedBox(
-      constraints: BoxConstraints(minWidth: width ?? 100, minHeight: 48),
-      child: GestureDetector(
-        onTap: (_isLoading || !_isLayoutReady) ? null : onPressed,
-        child: AnimatedContainer(
-          duration: animationDuration,
-          width: width,
-          padding: const EdgeInsets.symmetric(vertical: 16),
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [primaryColor, primaryColor.withOpacity(0.8)], // Use primaryColor with fallback
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
+      child: SizedBox(
+        height: 56,
+        child: TextFormField(
+          controller: controller,
+          decoration: InputDecoration(
+            labelText: label,
+            prefixText: prefixText,
+            suffixIcon: suffixIcon != null ? Icon(suffixIcon, color: AppTheme.getPrimary(context)) : null,
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: AppTheme.getTextSecondary(context)),
             ),
-            borderRadius: BorderRadius.circular(12),
-            boxShadow: [
-              BoxShadow(
-                color: primaryColor.withOpacity(0.3), // Use primaryColor with fallback
-                blurRadius: 8,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
-          child: Center(
-            child: isLoading
-                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white))
-                : Text(
-              label,
-              style: TextStyle(
-                color: Theme.of(context).elevatedButtonTheme.style?.foregroundColor?.resolve({}) ?? Colors.white, // Fallback to white
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: AppTheme.getTextSecondary(context)),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(
+                color: AppTheme.getPrimary(context),
+                width: 2,
               ),
             ),
+            filled: true,
+            fillColor: AppTheme.getSurface(context),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           ),
+          keyboardType: keyboardType,
+          maxLength: maxLength,
+          readOnly: readOnly,
+          onTap: onTap,
+          textCapitalization: label == 'Full Name' ? TextCapitalization.words : TextCapitalization.none,
+          style: TextStyle(color: AppTheme.getTextPrimary(context)),
         ),
       ),
     );
   }
 
-  // Build UI for Step 1 (Personal Information)
+  Widget _buildGenderDropdown() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: SizedBox(
+        height: 56,
+        child: InputDecorator(
+          decoration: InputDecoration(
+            labelText: 'Gender',
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: AppTheme.getTextSecondary(context)),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: AppTheme.getTextSecondary(context)),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(
+                color: AppTheme.getPrimary(context),
+                width: 2,
+              ),
+            ),
+            filled: true,
+            fillColor: AppTheme.getSurface(context),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          ),
+          child: DropdownButtonHideUnderline(
+            child: DropdownButton<String>(
+              value: _gender,
+              isExpanded: true,
+              hint: Text(
+                'Select your gender',
+                style: TextStyle(color: AppTheme.getTextSecondary(context)),
+              ),
+              style: TextStyle(color: AppTheme.getTextPrimary(context)),
+              items: _genders.map((String value) {
+                return DropdownMenuItem<String>(
+                  value: value,
+                  child: Text(
+                    value,
+                    style: TextStyle(color: AppTheme.getTextPrimary(context)),
+                  ),
+                );
+              }).toList(),
+              onChanged: (String? newValue) {
+                setState(() {
+                  _gender = newValue;
+                });
+              },
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildStep1(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
     return SingleChildScrollView(
@@ -507,7 +489,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
         children: [
           Text(
             'Personal Information',
-            style: TextStyle(fontSize: screenWidth * 0.05, fontWeight: FontWeight.bold, color: Theme.of(context).textTheme.bodyMedium?.color ?? Colors.black87),
+            style: TextStyle(
+              fontSize: screenWidth * 0.05,
+              fontWeight: FontWeight.bold,
+              color: AppTheme.getTextPrimary(context),
+            ),
           ),
           const SizedBox(height: 16),
           _buildModernTextField(controller: _nameController, label: 'Full Name'),
@@ -519,19 +505,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
             onTap: _selectDate,
           ),
           _buildModernTextField(controller: _locationController, label: 'Location', onTap: _fetchLocation),
-          _buildModernTextField(
-            controller: _phoneController,
-            label: 'Phone Number',
-            keyboardType: TextInputType.phone,
-            maxLength: 10,
-            prefixText: '+91 ',
-          ),
+          _buildGenderDropdown(),
         ],
       ),
     );
   }
 
-  // Build UI for Step 2 (College Details)
   Widget _buildStep2(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
     return SingleChildScrollView(
@@ -540,7 +519,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
         children: [
           Text(
             'College Details',
-            style: TextStyle(fontSize: screenWidth * 0.05, fontWeight: FontWeight.bold, color: Theme.of(context).textTheme.bodyMedium?.color ?? Colors.black87),
+            style: TextStyle(
+              fontSize: screenWidth * 0.05,
+              fontWeight: FontWeight.bold,
+              color: AppTheme.getTextPrimary(context),
+            ),
           ),
           const SizedBox(height: 16),
           _buildModernTextField(controller: _collegeNameController, label: 'College Name'),
@@ -549,18 +532,24 @@ class _RegisterScreenState extends State<RegisterScreen> {
           const SizedBox(height: 8),
           if (_collegeIdImage != null) ...[
             Row(
-              children: const [
-                Icon(Icons.check_circle, color: Colors.green),
-                SizedBox(width: 8),
-                Text('College ID selected', style: TextStyle(color: Colors.green, fontWeight: FontWeight.w500)),
+              children: [
+                Icon(Icons.check_circle, color: AppTheme.getSuccess(context)),
+                SizedBox(width: 16),
+                Text('College ID selected', style: TextStyle(color: AppTheme.getSuccess(context), fontWeight: FontWeight.w500)),
               ],
             ),
             const SizedBox(height: 8),
-            Image.file(_collegeIdImage!, height: 100, width: 100, fit: BoxFit.cover, errorBuilder: (context, error, stackTrace) => const Text('Error loading image')),
+            Image.file(
+              _collegeIdImage!,
+              height: 100,
+              width: 100,
+              fit: BoxFit.cover,
+              errorBuilder: (context, error, stackTrace) => Text('Error loading image', style: TextStyle(color: AppTheme.getError(context))),
+            ),
             const SizedBox(height: 8),
             TextButton(
               onPressed: () => setState(() => _collegeIdImage = null),
-              child: const Text('Clear Image', style: TextStyle(color: Colors.red)),
+              child: Text('Clear Image', style: TextStyle(color: AppTheme.getError(context))),
             ),
           ],
         ],
@@ -568,43 +557,236 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
   }
 
-  // Build UI for Step 3 (OTP Verification)
   Widget _buildStep3(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
+    final maxInterestsPerRow = (screenWidth ~/ 120).clamp(1, 4);
+    final visibleInterests = _trendingInterests.take(maxInterestsPerRow * 4).toList();
+
     return SingleChildScrollView(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Verify OTP',
-            style: TextStyle(fontSize: screenWidth * 0.05, fontWeight: FontWeight.bold, color: Theme.of(context).textTheme.bodyMedium?.color ?? Colors.black87),
+            'Your Interests',
+            style: TextStyle(
+              fontSize: screenWidth * 0.05,
+              fontWeight: FontWeight.bold,
+              color: AppTheme.getTextPrimary(context),
+            ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 16),
           Text(
-            'Enter the OTP sent to +91 ${_phoneController.text.trim()}',
+            'Select at least 3 interests',
             style: TextStyle(
               fontSize: screenWidth * 0.04,
-              color: (Theme.of(context).textTheme.bodyMedium?.color ?? Colors.black87).withOpacity(0.7),
+              color: AppTheme.getTextSecondary(context),
             ),
           ),
           const SizedBox(height: 16),
-          _buildModernTextField(
-            controller: _otpController,
-            label: 'OTP',
-            keyboardType: TextInputType.number,
-            maxLength: 6,
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              ...visibleInterests.map((interest) {
+                final isSelected = _selectedInterests.contains(interest);
+                return GestureDetector(
+                  onTap: () {
+                    setState(() {
+                      if (isSelected) {
+                        _selectedInterests.remove(interest);
+                      } else {
+                        _selectedInterests.add(interest);
+                      }
+                    });
+                  },
+                  child: AnimatedContainer(
+                    duration: animationDuration,
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: isSelected
+                          ? AppTheme.getPrimary(context)
+                          : AppTheme.getSurface(context),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: isSelected
+                            ? AppTheme.getPrimary(context)
+                            : AppTheme.getTextSecondary(context).withOpacity(0.3),
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          interest,
+                          style: TextStyle(
+                            color: isSelected
+                                ? AppTheme.getTextPrimary(context)
+                                : AppTheme.getTextPrimary(context),
+                            fontSize: screenWidth * 0.04,
+                            fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                          ),
+                        ),
+                        if (isSelected) ...[
+                          const SizedBox(width: 8),
+                          GestureDetector(
+                            onTap: () {
+                              setState(() {
+                                _selectedInterests.remove(interest);
+                              });
+                            },
+                            child: Icon(
+                              Icons.close,
+                              size: 16,
+                              color: AppTheme.getTextPrimary(context),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                );
+              }).toList(),
+              GestureDetector(
+                onTap: () {
+                  showDialog(
+                    context: context,
+                    builder: (context) => AlertDialog(
+                      backgroundColor: AppTheme.getSurface(context),
+                      title: Text(
+                        'Add Other Interest',
+                        style: TextStyle(color: AppTheme.getTextPrimary(context)),
+                      ),
+                      content: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          _buildModernTextField(
+                            controller: _otherInterestController,
+                            label: 'Enter Interest',
+                            keyboardType: TextInputType.text,
+                          ),
+                          const SizedBox(height: 10),
+                          if (_otherInterestController.text.isNotEmpty && _filteredInterests.isNotEmpty)
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: _filteredInterests.map((interest) {
+                                return ListTile(
+                                  title: Text(
+                                    interest,
+                                    style: TextStyle(color: AppTheme.getTextPrimary(context)),
+                                  ),
+                                  onTap: () {
+                                    setState(() {
+                                      if (!_selectedInterests.contains(interest)) {
+                                        _selectedInterests.add(interest);
+                                      }
+                                    });
+                                    _otherInterestController.clear();
+                                    Navigator.pop(context);
+                                  },
+                                );
+                              }).toList(),
+                            ),
+                        ],
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () {
+                            if (_otherInterestController.text.trim().isNotEmpty) {
+                              setState(() {
+                                final newInterest = _otherInterestController.text.trim();
+                                if (!_selectedInterests.contains(newInterest)) {
+                                  _selectedInterests.add(newInterest);
+                                }
+                              });
+                              _otherInterestController.clear();
+                            }
+                            Navigator.pop(context);
+                          },
+                          child: Text(
+                            'Add',
+                            style: TextStyle(color: AppTheme.getPrimary(context)),
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: () => Navigator.pop(context),
+                          child: Text(
+                            'Cancel',
+                            style: TextStyle(color: AppTheme.getPrimary(context)),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+                child: AnimatedContainer(
+                  duration: animationDuration,
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: AppTheme.getSurface(context),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: AppTheme.getTextSecondary(context).withOpacity(0.3),
+                    ),
+                  ),
+                  child: Text(
+                    'Other',
+                    style: TextStyle(
+                      color: AppTheme.getTextPrimary(context),
+                      fontSize: screenWidth * 0.04,
+                      fontWeight: FontWeight.normal,
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 8),
-          TextButton(
-            onPressed: _isLoading || _resendToken == null ? null : () => _sendOTP(resendToken: _resendToken),
-            child: Text(
-              'Resend OTP',
-              style: TextStyle(color: _isLoading || _resendToken == null ? Colors.grey : (Theme.of(context).primaryColor ?? Colors.blue)),
-            ),
-          ),
-          const SizedBox(height: 16),
-          _buildAnimatedButton(label: 'Complete Registration', onPressed: _verifyOTPAndSubmit, isLoading: _isLoading),
         ],
+      ),
+    );
+  }
+
+  Widget _buildAnimatedButton({
+    required String label,
+    required VoidCallback onPressed,
+    bool isLoading = false,
+    double? width,
+  }) {
+    return ConstrainedBox(
+      constraints: BoxConstraints(minWidth: width ?? 100, minHeight: 48),
+      child: GestureDetector(
+        onTap: (_isLoading || !_isLayoutReady) ? null : onPressed,
+        child: AnimatedContainer(
+          duration: animationDuration,
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          width: width,
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [AppTheme.getPrimary(context), AppTheme.getPrimary(context).withOpacity(0.8)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: [
+              BoxShadow(
+                color: AppTheme.getPrimary(context).withOpacity(0.3),
+                blurRadius: 8,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Center(
+            child: isLoading
+                ? SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: AppTheme.getTextPrimary(context)))
+                : Text(
+              label,
+              style: TextStyle(
+                color: AppTheme.getTextPrimary(context),
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -614,16 +796,15 @@ class _RegisterScreenState extends State<RegisterScreen> {
     final screenWidth = MediaQuery.of(context).size.width;
     final screenHeight = MediaQuery.of(context).size.height;
     final steps = [_buildStep1(context), _buildStep2(context), _buildStep3(context)];
-
     return Scaffold(
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      backgroundColor: AppTheme.getBackground(context),
       appBar: AppBar(
-        title: const Text('Create Account'),
+        title: Text('Create Account'),
         centerTitle: true,
-        backgroundColor: Theme.of(context).appBarTheme.backgroundColor,
+        backgroundColor: AppTheme.getSurface(context),
         elevation: 0,
         titleTextStyle: TextStyle(
-          color: Theme.of(context).appBarTheme.foregroundColor ?? Colors.black87, // Fallback to black87
+          color: AppTheme.getTextPrimary(context),
           fontSize: screenWidth * 0.05,
           fontWeight: FontWeight.bold,
         ),
@@ -644,7 +825,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         child: Card(
                           elevation: 4,
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                          color: Theme.of(context).cardColor,
+                          color: AppTheme.getSurface(context),
                           child: Padding(
                             padding: EdgeInsets.all(padding),
                             child: AnimatedSwitcher(
@@ -664,7 +845,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                   setState(() {
                                     _isLayoutReady = false;
                                     _currentPage = index;
-                                    WidgetsBinding.instance.addPostFrameCallback((_) => setState(() => _isLayoutReady = true));
+                                    WidgetsBinding.instance.addPostFrameCallback((_) =>
+                                        setState(() => _isLayoutReady = true));
                                   });
                                 },
                                 children: steps,
@@ -685,7 +867,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                               child: Text(
                                 'Back',
                                 style: TextStyle(
-                                  color: (Theme.of(context).textTheme.bodyMedium?.color ?? Colors.black87).withOpacity(0.5),
+                                  color: AppTheme.getTextSecondary(context),
                                   fontSize: screenWidth * 0.04,
                                 ),
                               ),
@@ -696,16 +878,22 @@ class _RegisterScreenState extends State<RegisterScreen> {
                             label: _currentPage == 2 ? 'Submit' : 'Next',
                             onPressed: () async {
                               if (_currentPage == 0) {
-                                if (await _validateStep1()) {
-                                  setState(() => _isLoading = true);
-                                  await _sendOTP();
-                                  setState(() => _isLoading = false);
-                                  if (_verificationId != null) {
-                                    _pageController.nextPage(duration: animationDuration, curve: Curves.easeInOut);
-                                  }
+                                final isValid = await _validateStep1();
+                                if (isValid) {
+                                  _pageController.nextPage(
+                                      duration: animationDuration,
+                                      curve: Curves.easeInOut);
                                 }
-                              } else if (_currentPage == 1 && _validateStep2()) {
-                                _pageController.nextPage(duration: animationDuration, curve: Curves.easeInOut);
+                              } else if (_currentPage == 1) {
+                                if (_validateStep2()) {
+                                  _pageController.nextPage(
+                                      duration: animationDuration,
+                                      curve: Curves.easeInOut);
+                                }
+                              } else if (_currentPage == 2) {
+                                if (_validateStep3()) {
+                                  _submitRegistration();
+                                }
                               }
                             },
                             isLoading: _isLoading,
@@ -719,7 +907,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
               },
             );
           } catch (e) {
-            return Center(child: Text('Error: $e', style: TextStyle(color: Theme.of(context).textTheme.bodyMedium?.color ?? Colors.black87)));
+            return Center(child: Text('Error: $e', style: TextStyle(color: AppTheme.getError(context))));
           }
         },
       ),
