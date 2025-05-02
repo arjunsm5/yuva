@@ -14,7 +14,6 @@ import 'package:geocoding/geocoding.dart'; // Geocoding for location names
 import 'package:flutter_image_compress/flutter_image_compress.dart'; // Import for image compression
 import 'package:yuva/utils/app_theme.dart'; // Import AppTheme for colors
 import 'package:provider/provider.dart'; // Import Provider for theme access
-import 'package:yuva/utils/theme_provider.dart';
 
 import '../ui/home_screen.dart'; // Import ThemeProvider for theme state
 
